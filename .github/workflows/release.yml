@@ -1,0 +1,167 @@
+name: Release Build
+
+env:
+  CICD_INTERMEDIATES_DIR: "_cicd-intermediates"
+  MSRV_FEATURES: "--all-features"
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches:
+      - main
+    tags:
+      - '*'
+
+jobs:
+  build-musl-release:
+    name: Build musl Static Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    container:
+      image: alpine:latest
+
+    steps:
+      - name: Install dependencies
+        run: |
+          apk add --no-cache git go build-base musl-dev
+
+      - name: Checkout latest code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
+          else
+            echo "VERSION=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
+          fi
+          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+
+      - name: Show build info
+        run: |
+          echo "Building version: $VERSION"
+          echo "Commit: $COMMIT"
+          echo "Date: $DATE"
+          echo "Go version: $(go version)"
+
+      - name: Build musl static binary
+        run: |
+          cd backend
+          CGO_ENABLED=1 CC=gcc go build \
+            -buildvcs=false \
+            -ldflags="-linkmode external -extldflags '-static' -X main.version=$VERSION -X main.commit=$COMMIT -X main.date=$DATE" \
+            -o sqlfmt-musl-linux-amd64
+          
+          echo "Binary built successfully"
+          ls -lh sqlfmt-musl-linux-amd64
+          file sqlfmt-musl-linux-amd64
+
+      - name: Verify static linking
+        run: |
+          cd backend
+          echo "=== Checking dynamic dependencies ==="
+          ldd sqlfmt-musl-linux-amd64 || echo "Not a dynamic executable (statically linked)"
+          
+          echo "=== Binary info ==="
+          file sqlfmt-musl-linux-amd64
+
+      - name: Test binary
+        run: |
+          cd backend
+          chmod +x sqlfmt-musl-linux-amd64
+          ./sqlfmt-musl-linux-amd64 --version
+          
+          echo "=== Testing with sample SQL ==="
+          echo "create table users (id int, name text, email text) distributed by (id);" | \
+            ./sqlfmt-musl-linux-amd64 --print-width 80
+
+      - name: Generate checksums
+        run: |
+          cd backend
+          sha256sum sqlfmt-musl-linux-amd64 > checksums.txt
+          cat checksums.txt
+
+      - name: Create release archive
+        run: |
+          mkdir -p releases-musl
+          cp backend/sqlfmt-musl-linux-amd64 releases-musl/
+          cp backend/checksums.txt releases-musl/
+          
+          cat > releases-musl/README.md << 'EOF'
+          # sqlfmt musl Static Build
+
+          This is a statically linked musl build of sqlfmt.
+
+          ## Features
+          - Zero glibc dependency
+          - Works on Alpine Linux and other musl-based systems
+          - Fully static binary
+
+          ## Usage
+          ```bash
+          chmod +x sqlfmt-musl-linux-amd64
+          ./sqlfmt-musl-linux-amd64 --help
+          ```
+
+          ## Verify
+          ```bash
+          sha256sum -c checksums.txt
+          ```
+          EOF
+
+          cd releases-musl
+          tar -czf ../sqlfmt-musl-linux-amd64.tar.gz \
+            sqlfmt-musl-linux-amd64 \
+            checksums.txt \
+            README.md
+
+          echo "Archive created:"
+          ls -lh ../sqlfmt-musl-linux-amd64.tar.gz
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sqlfmt-musl-linux-amd64
+          path: |
+            backend/sqlfmt-musl-linux-amd64
+            backend/checksums.txt
+            sqlfmt-musl-linux-amd64.tar.gz
+          retention-days: 30
+
+      - name: Check for release
+        id: is-release
+        run: |
+          unset IS_RELEASE ; if [[ $GITHUB_REF =~ ^refs/tags/v[0-9].* ]]; then IS_RELEASE='true' ; fi
+          echo "IS_RELEASE=${IS_RELEASE}" >> $GITHUB_OUTPUT
+
+
+      - name: Publish archives and packages
+        if: steps.is-release.outputs.IS_RELEASE
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            sqlfmt-musl-linux-amd64.tar.gz
+            backend/checksums.txt
+
+      - name: Build summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Version**: $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Commit**: $COMMIT" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Build Type**: musl static" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Binary Size**: $(du -h backend/sqlfmt-musl-linux-amd64 | cut -f1)" >> $GITHUB_STEP_SUMMARY
+          echo "✅ **Archive Size**: $(du -h sqlfmt-musl-linux-amd64.tar.gz | cut -f1)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### SHA256 Checksum" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          cat backend/checksums.txt >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
