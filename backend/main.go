@@ -35,7 +35,7 @@ type Specification struct {
 }
 
 var (
-	flagPrintWidth = flag.Int("print-width", 60, "line length where sqlfmt will try to wrap")
+	flagPrintWidth = flag.Int("print-width", 80, "line length where sqlfmt will try to wrap")
 	flagUseSpaces  = flag.Bool("use-spaces", false, "indent with spaces instead of tabs")
 	flagTabWidth   = flag.Int("tab-width", 4, "number of spaces per indentation level")
 	flagCasemode   = flag.String("casemode", "upper", "keyword casing, can be: upper, lower, title, spongebob")
