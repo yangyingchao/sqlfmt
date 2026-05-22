@@ -3,6 +3,7 @@ mod special_clauses;
 mod text_type;
 mod keywords;
 mod splitter;
+mod comments;
 
 pub use splitter::split_statements;
 
@@ -21,13 +22,16 @@ pub fn format_sql(cfg: &FormatterConfig, statements: &[String]) -> Result<String
         let stmts = split_statements(input);
         
         for stmt in stmts {
-            let stmt = stmt.trim();
-            if stmt.is_empty() {
+            let stmt_trimmed = stmt.trim();
+            if stmt_trimmed.is_empty() {
                 continue;
             }
             
+            // Extract comments from the statement
+            let (stmt_without_comments, leading_comments) = extract_leading_comments(&stmt);
+            
             // 1. Track TEXT types before parsing
-            let (clean_stmt, text_count) = text_type::track_text_types(stmt);
+            let (clean_stmt, text_count) = text_type::track_text_types(&stmt_without_comments);
             
             // 2. Extract special clauses (WITH, DISTRIBUTED BY, PARTITION BY)
             let (clean_stmt, clauses) = special_clauses::extract_all_clauses(&clean_stmt);
@@ -57,6 +61,12 @@ pub fn format_sql(cfg: &FormatterConfig, statements: &[String]) -> Result<String
                 formatted.push(';');
             }
             
+            // 9. Add leading comments back
+            if !leading_comments.is_empty() {
+                result.push_str(&leading_comments);
+                result.push('\n');
+            }
+            
             result.push_str(&formatted);
             result.push('\n');
             result.push('\n');
@@ -73,6 +83,37 @@ pub fn format_sql(cfg: &FormatterConfig, statements: &[String]) -> Result<String
     }
     
     Ok(result)
+}
+
+/// Extract leading comments from a statement
+fn extract_leading_comments(stmt: &str) -> (String, String) {
+    let mut comments = String::new();
+    let mut sql = String::new();
+    let mut found_sql = false;
+
+    for line in stmt.lines() {
+        let trimmed = line.trim();
+        if trimmed.starts_with("--") {
+            if !found_sql {
+                comments.push_str(line);
+                comments.push('\n');
+            } else {
+                // Comments after SQL - keep with SQL
+                sql.push_str(line);
+                sql.push('\n');
+            }
+        } else if !trimmed.is_empty() {
+            found_sql = true;
+            sql.push_str(line);
+            sql.push('\n');
+        } else if found_sql {
+            // Empty line after SQL started
+            sql.push_str(line);
+            sql.push('\n');
+        }
+    }
+
+    (sql.trim_end().to_string(), comments.trim_end().to_string())
 }
 
 /// Format JSON (pass-through for now, will implement if needed)

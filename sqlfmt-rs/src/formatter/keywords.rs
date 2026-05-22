@@ -75,12 +75,22 @@ fn normalize_with_keyword(sql: &str, replacement: &str) -> String {
 }
 
 fn normalize_with_parameters(sql: &str) -> String {
-    // Normalize parameter names inside WITH clauses to uppercase
-    // Match word characters followed by '=' and convert the word to uppercase
-    let param_pattern = Regex::new(r"\b([a-zA-Z_]\w*)\s*=").unwrap();
-    param_pattern
+    // Normalize parameter names inside WITH clauses only
+    // Pattern: WITH ( ... ) - only process content within parentheses after WITH
+    let with_pattern = Regex::new(r"(?i)WITH\s*\(([^)]*)\)").unwrap();
+    
+    with_pattern
         .replace_all(sql, |caps: &regex::Captures| {
-            format!("{} =", caps[1].to_uppercase())
+            let with_content = &caps[1];
+            let param_pattern = Regex::new(r"\b([a-zA-Z_]\w*)\s*=").unwrap();
+            
+            let normalized = param_pattern
+                .replace_all(with_content, |inner_caps: &regex::Captures| {
+                    format!("{} =", inner_caps[1].to_uppercase())
+                })
+                .to_string();
+            
+            format!("WITH ({})", normalized)
         })
         .to_string()
 }
