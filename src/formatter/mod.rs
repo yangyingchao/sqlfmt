@@ -120,5 +120,3 @@ fn extract_leading_comments(stmt: &str) -> (String, String) {
 
     (sql.trim_end().to_string(), comments.trim_end().to_string())
 }
-
-

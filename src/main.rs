@@ -77,9 +77,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         args.stmt.join("\n")
     } else {
         match &args.file {
-            Some(path) if path.as_os_str() != "-" => {
-                fs::read_to_string(path)?
-            }
+            Some(path) if path.as_os_str() != "-" => fs::read_to_string(path)?,
             _ => {
                 // Read from stdin
                 let mut input = String::new();
