@@ -1,0 +1,26 @@
+[package]
+name = "sqlfmt"
+version = "0.5.4"
+edition = "2021"
+authors = ["yangyingchao <yang.yingchao@qq.com>"]
+description = "SQL formatter with intelligent WITH clause compression and Greenplum dialect support"
+license = "MIT"
+
+[[bin]]
+name = "sqlfmt"
+path = "src/main.rs"
+
+[dependencies]
+sqlparser = "0.45"
+clap = { version = "4.4", features = ["derive"] }
+regex = "1.10"
+lazy_static = "1.4"
+anyhow = "1.0"
+thiserror = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
