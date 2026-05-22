@@ -1,5 +1,9 @@
 # sqlfmt
 
+
+Forked from: https://github.com/madelynnblue/sqlfmt
+
+
 Width-aware SQL formatter with Greenplum/PostgreSQL dialect support.
 
 > 本代码由 AI 生成，仅供参考和学习使用。  
