@@ -1,7 +1,9 @@
 use clap::{ArgAction, Parser};
 use sqlfmt::config::CaseMode;
 use sqlfmt::{format_json, format_sql, FormatterConfig, VERSION};
+use std::fs;
 use std::io::{self, Read};
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(name = "sqlfmt")]
@@ -36,9 +38,17 @@ struct Args {
     #[arg(long, action = ArgAction::SetTrue)]
     json: bool,
 
-    /// SQL statements to format (if not provided, reads from stdin)
+    /// SQL statements to format (if not provided, reads from file or stdin)
     #[arg(long, value_name = "SQL")]
     stmt: Vec<String>,
+
+    /// File to format (use - or omit for stdin)
+    #[arg(value_name = "FILE")]
+    file: Option<PathBuf>,
+
+    /// Edit file in-place
+    #[arg(short = 'i', long, action = ArgAction::SetTrue)]
+    inplace: bool,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -70,10 +80,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let input = if !args.stmt.is_empty() {
         args.stmt.join("\n")
     } else {
-        // Read from stdin
-        let mut input = String::new();
-        io::stdin().read_to_string(&mut input)?;
-        input
+        match &args.file {
+            Some(path) if path.as_os_str() != "-" => {
+                fs::read_to_string(path)?
+            }
+            _ => {
+                // Read from stdin
+                let mut input = String::new();
+                io::stdin().read_to_string(&mut input)?;
+                input
+            }
+        }
     };
 
     if input.trim().is_empty() {
@@ -82,18 +99,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Format SQL or JSON
     let result = if args.json {
-        // Try to format as JSON
         match format_json(&input) {
             Ok(formatted) => formatted,
-            Err(_) => {
-                // Fall back to treating as SQL if JSON parsing fails
-                format_sql(&config, &[input])?
-            }
+            Err(_) => format_sql(&config, &[input])?,
         }
     } else {
-        // Format as SQL
         format_sql(&config, &[input])?
     };
+
+    if args.inplace {
+        if let Some(path) = &args.file {
+            if path.as_os_str() != "-" {
+                fs::write(path, &result)?;
+                return Ok(());
+            }
+        }
+        eprintln!("error: --inplace requires a file path");
+        std::process::exit(1);
+    }
 
     print!("{}", result);
     Ok(())
