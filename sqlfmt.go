@@ -14,6 +14,7 @@ import (
 var (
 	ignoreComments       = regexp.MustCompile(`^--.*\s*`)
 	distributedByPattern = regexp.MustCompile(`(?i)\s+distributed\s+by\s*\([^)]*\)`)
+	withClausePattern    = regexp.MustCompile(`(?i)\s+with\s*\([^)]*\)`)
 	textTypePattern      = regexp.MustCompile(`(?i)\bTEXT\b`)
 )
 
@@ -23,7 +24,7 @@ func stripTextType(sql string) (string, int) {
 	// Count occurrences of TEXT type (case-insensitive, word boundary)
 	matches := textTypePattern.FindAllStringIndex(sql, -1)
 	textCount := len(matches)
-	
+
 	// Don't modify the SQL, just count TEXT occurrences
 	// The parser will convert TEXT to STRING, and we'll restore it later
 	return sql, textCount
@@ -36,11 +37,11 @@ func restoreTextType(formatted string, textCount int) string {
 	if textCount == 0 {
 		return formatted
 	}
-	
+
 	// Replace STRING with TEXT for the first textCount occurrences
 	// This assumes that STRING types in the output correspond to the original TEXT types
 	stringPattern := regexp.MustCompile(`(?i)\bSTRING\b`)
-	
+
 	// Track how many STRING instances we've seen
 	replaced := 0
 	result := stringPattern.ReplaceAllStringFunc(formatted, func(match string) string {
@@ -51,7 +52,7 @@ func restoreTextType(formatted string, textCount int) string {
 		}
 		return match
 	})
-	
+
 	return result
 }
 
@@ -63,16 +64,72 @@ func stripDistributedBy(sql string) (string, []string) {
 	return cleanedSQL, matches
 }
 
+// stripWithClause removes the WITH clause from SQL statements (for CREATE TABLE statements)
+// and returns both the cleaned SQL and the extracted clause for later restoration
+func stripWithClause(sql string) (string, []string) {
+	matches := withClausePattern.FindAllString(sql, -1)
+	cleanedSQL := withClausePattern.ReplaceAllString(sql, "")
+	return cleanedSQL, matches
+}
+
+// extractAndStripClauses extracts WITH and DISTRIBUTED BY clauses from CREATE TABLE statements
+// and returns the cleaned SQL plus the list of clause sets for each CREATE TABLE
+func extractAndStripClauses(sql string, allClauses []map[string][]string) (string, []map[string][]string) {
+	result := sql
+
+	// Find all CREATE TABLE statements and extract their clauses
+	createTablePattern := regexp.MustCompile(`(?i)CREATE\s+TABLE\s+[^;]+?;`)
+
+	matches := createTablePattern.FindAllString(result, -1)
+	for _, match := range matches {
+		// Extract WITH clause (both original and compressed versions)
+		withMatches := withClausePattern.FindAllString(match, -1)
+		withClauseOriginal := ""
+		withClauseCompressed := ""
+		if len(withMatches) > 0 {
+			withClauseOriginal = withMatches[0]
+			// Clean up leading whitespace/newlines from original
+			withClauseOriginal = regexp.MustCompile(`^\s*`).ReplaceAllString(withClauseOriginal, "")
+
+			// Also create a compressed version for checking if it fits
+			withClauseCompressed = withMatches[0]
+			withClauseCompressed = regexp.MustCompile(`\s+`).ReplaceAllString(withClauseCompressed, " ")
+			withClauseCompressed = strings.TrimSpace(withClauseCompressed)
+		}
+
+		// Extract DISTRIBUTED BY clause
+		distMatches := distributedByPattern.FindAllString(match, -1)
+		distClause := ""
+		if len(distMatches) > 0 {
+			// Trim leading/trailing whitespace from the extracted clause
+			distClause = strings.TrimSpace(distMatches[0])
+		}
+
+		clauses := map[string][]string{
+			"WITH":              {withClauseCompressed},
+			"WITH_ORIGINAL":     {withClauseOriginal},
+			"DISTRIBUTED":       {distClause},
+		}
+		allClauses = append(allClauses, clauses)
+	}
+
+	// Remove all clauses from SQL
+	result = withClausePattern.ReplaceAllString(result, "")
+	result = distributedByPattern.ReplaceAllString(result, "")
+
+	return result, allClauses
+}
+
 // mergeLineIfFits checks if merging two lines would exceed lineWidth
 // If not, it merges them; otherwise keeps them on separate lines
 func mergeLineIfFits(prevLine, currentLine string, lineWidth int) string {
 	// Trim trailing newline from prevLine and leading/trailing spaces from currentLine
 	prevLineTrimmed := strings.TrimSuffix(prevLine, "\n")
 	currentLineTrimmed := strings.TrimSpace(currentLine)
-	
+
 	// Calculate the merged length (with a space between them)
 	mergedLength := len(prevLineTrimmed) + 1 + len(currentLineTrimmed)
-	
+
 	if mergedLength <= lineWidth {
 		// Fits within line width, merge them
 		return prevLineTrimmed + " " + currentLineTrimmed + "\n"
@@ -81,81 +138,82 @@ func mergeLineIfFits(prevLine, currentLine string, lineWidth int) string {
 	return prevLine + currentLine
 }
 
-// restoreDistributedBy appends DISTRIBUTED BY clauses back to CREATE TABLE statements
-// and merges lines if they fit within lineWidth
-func restoreDistributedBy(formatted string, distributedClauses []string, lineWidth int) string {
-	if len(distributedClauses) == 0 {
+// restoreAllSpecialClauses restores both WITH and DISTRIBUTED BY clauses
+// to CREATE TABLE statements in the correct order, with intelligent line merging
+func restoreAllSpecialClauses(formatted string, allClauses []map[string][]string, lineWidth int) string {
+	if len(allClauses) == 0 {
 		return formatted
 	}
 
 	result := formatted
 	clauseIdx := 0
 
-	// Find all CREATE TABLE statements and restore the corresponding DISTRIBUTED BY clauses
+	// Find all CREATE TABLE statements and restore the corresponding clauses
 	createTablePattern := regexp.MustCompile(`(?i)(CREATE\s+TABLE\s+[^;]+?);`)
 	result = createTablePattern.ReplaceAllStringFunc(result, func(match string) string {
-		if clauseIdx >= len(distributedClauses) {
+		if clauseIdx >= len(allClauses) {
 			return match
 		}
-		clause := distributedClauses[clauseIdx]
+		clauses := allClauses[clauseIdx]
 		clauseIdx++
-		// Remove the trailing semicolon, add DISTRIBUTED BY, then re-add semicolon
-		withClause := strings.TrimSuffix(match, ";") + clause + ";"
-		return withClause
-	})
-	
-	// Now handle line merging for lines that have distributed by
-	lines := strings.Split(result, "\n")
-	var mergedLines []string
-	
-	for i := 0; i < len(lines); i++ {
-		currentLine := lines[i]
-		currentLower := strings.ToLower(currentLine)
-		
-		// Check if current line contains "distributed by" and ends with semicolon
-		if strings.Contains(currentLower, "distributed by") && strings.HasSuffix(strings.TrimSpace(currentLine), ";") {
-			// Try to merge with previous line if it exists and previous line doesn't end with semicolon
-			if i > 0 && len(mergedLines) > 0 {
-				prevLine := mergedLines[len(mergedLines)-1]
-				prevLower := strings.ToLower(prevLine)
-				
-				// Only merge if previous line doesn't already contain "distributed by"
-				if !strings.Contains(prevLower, "distributed by") {
-					prevTrimmed := strings.TrimSpace(prevLine)
-					currentTrimmed := strings.TrimSpace(currentLine)
-					
-					// Calculate merged length
-					mergedLength := len(prevTrimmed) + 1 + len(currentTrimmed)
-					
-					if mergedLength <= lineWidth {
-						// Merge: remove the previous line, add merged version
-						mergedLines = mergedLines[:len(mergedLines)-1]
-						mergedLines = append(mergedLines, prevTrimmed+" "+currentTrimmed)
-						continue
-					}
-				}
-			}
+
+		// Remove the trailing semicolon
+		statement := strings.TrimSuffix(match, ";")
+
+		distClause := ""
+		if len(clauses["DISTRIBUTED"]) > 0 && clauses["DISTRIBUTED"][0] != "" {
+			distClause = clauses["DISTRIBUTED"][0]
 		}
-		
-		mergedLines = append(mergedLines, currentLine)
-	}
-	
-	return strings.Join(mergedLines, "\n")
+
+		// Get original and compressed WITH clauses
+		withClauseCompressed := ""
+		withClauseOriginal := ""
+		if len(clauses["WITH"]) > 0 {
+			withClauseCompressed = clauses["WITH"][0]
+		}
+		if len(clauses["WITH_ORIGINAL"]) > 0 {
+			withClauseOriginal = clauses["WITH_ORIGINAL"][0]
+		}
+
+		// Decide which version of WITH clause to use
+		withClause := withClauseCompressed
+
+		// Check if compressed WITH itself fits within lineWidth
+		if withClauseCompressed != "" && len(withClauseCompressed) > lineWidth {
+			// Compressed WITH is too long, use original multi-line format
+			withClause = withClauseOriginal
+		}
+
+		// Add WITH clause to statement
+		if withClause != "" {
+			// Always add newline before WITH, trim leading whitespace
+			statement += "\n" + strings.TrimLeft(withClause, " \t")
+		}
+
+		// Add DISTRIBUTED BY clause on a new line
+		if distClause != "" {
+			statement += "\n" + distClause
+		}
+
+		statement += ";"
+		return statement
+	})
+
+	return result
 }
 
 func FmtSQL(cfg tree.PrettyCfg, stmts []string) (string, error) {
 	var prettied strings.Builder
-	var allDistributedClauses []string
+	var allSpecialClauses []map[string][]string // Store WITH and DISTRIBUTED BY for each CREATE TABLE
 	totalTextCount := 0
 
 	for _, stmt := range stmts {
 		// Strip TEXT type to prevent CockroachDB parser from converting it to STRING
 		stmt, textCount := stripTextType(stmt)
 		totalTextCount += textCount
-		
-		// Strip DISTRIBUTED BY clauses before processing
-		stmt, distributedClauses := stripDistributedBy(stmt)
-		allDistributedClauses = append(allDistributedClauses, distributedClauses...)
+
+		// Extract all WITH and DISTRIBUTED BY clauses for this statement
+		stmt, allSpecialClauses = extractAndStripClauses(stmt, allSpecialClauses)
 
 		for len(stmt) > 0 {
 			stmt = strings.TrimSpace(stmt)
@@ -207,8 +265,8 @@ func FmtSQL(cfg tree.PrettyCfg, stmts []string) (string, error) {
 	result := strings.TrimRightFunc(prettied.String(), unicode.IsSpace)
 	// Restore TEXT type (CockroachDB parser converts TEXT to STRING)
 	result = restoreTextType(result, totalTextCount)
-	// Restore DISTRIBUTED BY clauses
-	result = restoreDistributedBy(result, allDistributedClauses, cfg.LineWidth)
+	// Restore WITH and DISTRIBUTED BY clauses in the correct order
+	result = restoreAllSpecialClauses(result, allSpecialClauses, cfg.LineWidth)
 	return result, nil
 }
 

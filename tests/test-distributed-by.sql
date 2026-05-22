@@ -21,11 +21,21 @@ DROP TABLE IF EXISTS s;
 CREATE TABLE r (
     a int4,
     b int4)
+WITH (
+    APPENDONLY = true,
+    COMPRESSLEVEL = 3
+)
 DISTRIBUTED BY (a);
 
 CREATE TABLE s (
     a int4,
     b text)
+WITH (
+    APPENDONLY = true,
+    ORIENTATION = column,
+    COMPRESSTYPE = multiple,
+    COMPRESSLEVEL = 3
+)
 DISTRIBUTED BY (a);
 
 INSERT INTO r
