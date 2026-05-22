@@ -1,0 +1,342 @@
+sqlfmt Go to Rust Porting Analysis - Document Manifest
+========================================================
+
+Generated: May 22, 2026
+Project: github.com/madelynnblue/sqlfmt
+Target: Complete Rust port documentation
+
+FILES CREATED
+=============
+
+1. RUST_PORTING_INDEX.md (14 KB, 483 lines)
+   - Navigation hub and quick reference
+   - Best for: Getting oriented, planning
+   - Contains: Overview, checklists, Q&A, dependencies, phases
+
+2. RUST_PORTING_ANALYSIS.md (22 KB, 710 lines)
+   - High-level architecture analysis
+   - Best for: Understanding structure, dependencies
+   - Contains: Function analysis, patterns, CLI/HTTP, test overview
+
+3. RUST_PORTING_DETAILED.md (28 KB, 978 lines)
+   - Code-level implementation guide
+   - Best for: Actual implementation
+   - Contains: 25+ code examples, Go/Rust side-by-side
+
+4. RUST_TEST_MAPPING.md (11 KB, 432 lines)
+   - Test case analysis and coverage
+   - Best for: Testing and QA
+   - Contains: Test breakdown, checklist, debugging guide
+
+TOTAL: 75 KB, 2,603 lines, 50+ sections
+
+
+QUICK START
+===========
+
+For Planners:
+  → Read RUST_PORTING_INDEX.md first
+  → Then RUST_PORTING_ANALYSIS.md sections 1-3
+  → Review Implementation Priority and Gotchas
+
+For Developers:
+  → Read RUST_PORTING_DETAILED.md
+  → Copy code examples as needed
+  → Follow 6-phase implementation plan
+
+For QA/Testing:
+  → Read RUST_TEST_MAPPING.md
+  → Use test case checklist
+  → Follow manual execution steps
+
+
+KEY STATISTICS
+==============
+
+Code Analysis:
+  - Go files: 3 (sqlfmt.go, backend/main.go, wasm/main.go)
+  - Lines: 1,203
+  - Estimated Rust equivalent: 1,500-2,000 lines
+
+Documentation:
+  - Total lines: 2,603
+  - Code examples: 25+
+  - Tables: 40+
+  - Functions documented: 11 major
+
+Architecture:
+  - Regex patterns: 5
+  - Main functions: 2
+  - CLI flags: 9
+  - HTTP endpoints: 4
+  - Proposed modules: 7
+
+Effort Estimate: 200-400 developer-hours
+
+
+CRITICAL DEPENDENCIES
+======================
+
+Must Evaluate:
+  - sqlparser-rs (primary SQL parser dependency)
+  - Pretty-printer algorithm implementation
+
+Recommended Crates:
+  - regex: Pattern matching
+  - once_cell: Lazy statics
+  - clap: CLI parsing
+  - axum: HTTP framework
+  - moka: LRU caching
+  - tera: Templates
+
+
+HIGH-RISK AREAS
+===============
+
+1. sqlparser-rs API differences vs CockroachDB parser
+2. Pretty-printer algorithm implementation from scratch
+3. Statement splitting behavior differences
+4. Cache eviction semantics
+5. TEXT→STRING restoration with mixed types
+
+
+WHAT'S DOCUMENTED
+==================
+
+✅ Core sqlfmt.go
+   - FmtSQL function (main entry point)
+   - FmtJSON function (JSON formatting)
+   - All 5 regex patterns
+   - TEXT type restoration (2-phase approach)
+   - Special clause extraction/restoration
+   - WITH clause compression
+   - Comment handling
+   - Data structures
+
+✅ CLI & HTTP (backend/main.go)
+   - All 9 command-line flags
+   - Flag to PrettyCfg mapping
+   - Input/output handling
+   - 4 HTTP endpoints
+   - Query parameters
+   - Caching mechanism
+   - Case mode implementations
+   - Validation rules
+
+✅ Dependencies
+   - Go imports (18 packages)
+   - CockroachDB parser API usage
+   - Rust equivalents with versions
+   - Module structure proposal
+
+✅ Test Cases
+   - Test file analysis
+   - 8 major feature breakdowns
+   - Test execution methods
+   - Debugging guide
+   - Coverage gaps identified
+
+
+DOCUMENT READING GUIDE
+======================
+
+By Role:
+
+  Architect/Planner:
+    1. RUST_PORTING_INDEX.md (all sections)
+    2. RUST_PORTING_ANALYSIS.md (all)
+    3. RUST_TEST_MAPPING.md (overview only)
+
+  Backend Developer:
+    1. RUST_PORTING_INDEX.md (dependency section)
+    2. RUST_PORTING_DETAILED.md (all)
+    3. RUST_PORTING_ANALYSIS.md (reference)
+
+  QA/Tester:
+    1. RUST_TEST_MAPPING.md (all)
+    2. RUST_PORTING_ANALYSIS.md (test section)
+    3. RUST_PORTING_INDEX.md (learning resources)
+
+  New Rust Developer:
+    1. RUST_PORTING_INDEX.md (learning path)
+    2. RUST_PORTING_ANALYSIS.md (sections 1-3)
+    3. RUST_PORTING_DETAILED.md (sections 1, 5, 6)
+
+
+IMPLEMENTATION PHASES
+=====================
+
+Phase 1: Core Library (40-60 hours)
+  - Regex patterns
+  - TEXT restoration
+  - Clause extraction
+  - FmtSQL core
+  - JSON formatting
+
+Phase 2: Parser Integration (30-50 hours)
+  - Evaluate sqlparser-rs
+  - PrettyCfg equivalent
+  - Pretty-printer algorithm
+  - Parser integration
+
+Phase 3: CLI Module (20-30 hours)
+  - Argument parsing (clap)
+  - Stdin/stdout handling
+  - Validation
+  - Testing
+
+Phase 4: HTTP Server (30-40 hours)
+  - HTTP framework (axum)
+  - /fmt endpoint
+  - Caching (moka)
+  - Templates (tera)
+
+Phase 5: Testing & Polish (40-60 hours)
+  - Test suite
+  - Bug fixes
+  - Performance
+  - Documentation
+
+Phase 6: WASM (Optional, 20-40 hours)
+  - wasm-pack setup
+  - Bindings
+  - Integration
+
+
+GOTCHAS TO WATCH
+================
+
+1. TEXT Type Restoration
+   - Simple counting may fail
+   - Solution: Track positions if issues arise
+
+2. Parser API Differences
+   - sqlparser-rs != CockroachDB API
+   - Solution: Careful testing needed
+
+3. Regex Replace Closures
+   - Rust doesn't allow mutable captures
+   - Solution: Use manual iteration
+
+4. WITH Compression
+   - Heuristic may have edge cases
+   - Solution: Refine as needed
+
+5. Cache Eviction
+   - Not true LRU in Go version
+   - Solution: Use proper moka LRU
+
+6. Case Functions
+   - Can't store closure function pointers
+   - Solution: Enum-based dispatch
+
+
+TESTING STRATEGY
+================
+
+Unit Tests:
+  - TEXT restoration
+  - Regex patterns
+  - Clause extraction
+  - Compression logic
+
+Integration Tests:
+  - Full FmtSQL pipeline
+  - Comment preservation
+  - Clause restoration
+  - CLI argument parsing
+
+End-to-End Tests:
+  - Run against test-distributed-by.sql
+  - Byte-for-byte comparison
+  - Manual inspection
+
+Performance Tests:
+  - Formatting speed
+  - Cache hit rates
+  - Memory usage
+
+
+RESOURCES PROVIDED
+==================
+
+Concepts:
+  - Wadler's pretty printer algorithm
+  - SQL parsing (PostgreSQL dialect)
+  - Web framework patterns
+  - Caching strategies
+
+Code Examples:
+  - FmtSQL walkthrough
+  - Clause extraction
+  - TEXT restoration
+  - Regex patterns
+  - Configuration mapping
+  - HTTP caching
+  - Statement splitting
+
+Templates:
+  - Module structure
+  - Cargo.toml dependencies
+  - Test structure
+  - Implementation checklist
+
+
+VERSION
+=======
+
+Analysis Date: May 22, 2026
+Target: sqlfmt main branch
+Go Version: 1.24.5
+Rust Edition: 2021
+
+
+MAINTENANCE NOTES
+=================
+
+Update these documents if:
+  - sqlparser-rs API changes significantly
+  - New test cases are added
+  - New gotchas are discovered
+  - Implementation choices change
+  - Performance characteristics change
+
+
+AUTHOR'S NOTES
+==============
+
+This analysis represents a comprehensive review of the sqlfmt project
+with the goal of enabling a complete, production-ready Rust port.
+
+Key focus areas:
+  1. Complete code coverage (no missing functions)
+  2. Practical implementation guidance (copy-paste ready)
+  3. Risk identification and mitigation
+  4. Testing strategy
+  5. Phased implementation approach
+
+The documentation is structured for multiple audiences:
+  - High-level for architects
+  - Code-level for developers
+  - Test-focused for QA
+
+Recommendation: Start with RUST_PORTING_INDEX.md
+
+
+NEXT STEPS
+==========
+
+1. Review all documents
+2. Validate effort estimate with team
+3. Identify sqlparser-rs capabilities
+4. Plan team composition
+5. Start Phase 1 implementation
+6. Update documents as needed
+7. Track progress against phases
+
+
+END OF MANIFEST
+
+For questions about specific sections, refer to the document headers
+which include purpose statements and best-use guidelines.
+
