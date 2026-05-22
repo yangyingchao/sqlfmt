@@ -1,7 +1,1 @@
-backend/dist
-sqlfmt
-/backend/sqlfmt-releas*
-/backend/sqlfmt-musl*
-/backend/sqlfmt-v*
-/releases-musl/
-/releases/
+/target/

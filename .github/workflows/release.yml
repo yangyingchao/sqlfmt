@@ -14,130 +14,189 @@ on:
       - '*'
 
 jobs:
-  build-musl-release:
-    name: Build musl Static Release
+  crate_metadata:
+    name: Extract crate metadata
     runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+    - name: Extract crate information
+      id: crate_metadata
+      run: |
+        echo "name=sqlfmt" | tee -a $GITHUB_OUTPUT
+        cargo metadata --no-deps --format-version 1 | jq -r '"version=" + .packages[0].version' | tee -a $GITHUB_OUTPUT
+        cargo metadata --no-deps --format-version 1 | jq -r '"maintainer=" + .packages[0].authors[0]' | tee -a $GITHUB_OUTPUT
+        cargo metadata --no-deps --format-version 1 | jq -r '"homepage=" + .packages[0].homepage' | tee -a $GITHUB_OUTPUT
+        cargo metadata --no-deps --format-version 1 | jq -r '"msrv=" + .packages[0].rust_version' | tee -a $GITHUB_OUTPUT
+    outputs:
+      name: ${{ steps.crate_metadata.outputs.name }}
+      version: ${{ steps.crate_metadata.outputs.version }}
+      maintainer: ${{ steps.crate_metadata.outputs.maintainer }}
+      homepage: ${{ steps.crate_metadata.outputs.homepage }}
+      msrv: ${{ steps.crate_metadata.outputs.msrv }}
+
+  ensure_cargo_fmt:
+    name: Ensure 'cargo fmt' has been run
+    runs-on: ubuntu-latest
+    steps:
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: rustfmt
+    - uses: actions/checkout@v5
+    - run: cargo fmt -- --check
+
+  # lint_check:
+  #   name: Ensure 'cargo clippy' has no warnings
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - uses: dtolnay/rust-toolchain@stable
+  #     with:
+  #       components: clippy
+  #   - uses: actions/checkout@v5
+  #   - run: cargo clippy --all-targets --all-features -- -Dwarnings
+
+  build:
+    name: ${{ matrix.job.target }} (${{ matrix.job.os }})
+    runs-on: ${{ matrix.job.os }}
+    needs: crate_metadata
     permissions:
       contents: write
-    container:
-      image: alpine:latest
-
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - { target: aarch64-unknown-linux-musl  , os: ubuntu-22.04, use-cross: true }
+          # - { target: x86_64-apple-darwin         , os: macos-13                      }
+          # - { target: aarch64-apple-darwin        , os: macos-14                      }
+          # - { target: x86_64-pc-windows-msvc      , os: windows-2022                  }
+          - { target: x86_64-unknown-linux-musl   , os: ubuntu-22.04, use-cross: true }
+    env:
+      BUILD_CMD: cargo
     steps:
-      - name: Install dependencies
-        run: |
-          apk add --no-cache git go build-base musl-dev
+    - name: Checkout source code
+      uses: actions/checkout@v5
 
-      - name: Checkout latest code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+    - name: Install prerequisites
+      shell: bash
+      run: |
+        case ${{ matrix.job.target }} in
+          arm-unknown-linux-*) sudo apt-get -y update ; sudo apt-get -y install gcc-arm-linux-gnueabihf ;;
+          aarch64-unknown-linux-gnu) sudo apt-get -y update ; sudo apt-get -y install gcc-aarch64-linux-gnu ;;
+        esac
 
-      - name: Set version
-        id: version
-        run: |
-          git config --global --add safe.directory /__w/sqlfmt/sqlfmt
-          VERSION=$(git describe --tags --always --dirty)
+    - name: Install Rust toolchain
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ matrix.job.target }}
+        # On windows, for now build with 1.77.2, so that it works on windows 7.
+        # When we update the MSRV again, we'll need to revisit this, and probably drop support for Win7
+        toolchain: "${{ contains(matrix.job.target, 'windows-') && '1.77.2' || 'stable' }}"
 
-          # Fallback to commit hash if version is still empty
-          if [ -z "$VERSION" ]; then
-            VERSION=$(git rev-parse --short HEAD)
-          fi
+    - name: Install cross
+      if: matrix.job.use-cross
+      uses: taiki-e/install-action@v2
+      with:
+        tool: cross
 
-          COMMIT=$(git rev-parse --short HEAD)
-          DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+    - name: Overwrite build command env variable
+      if: matrix.job.use-cross
+      shell: bash
+      run: echo "BUILD_CMD=cross" >> $GITHUB_ENV
 
-          echo "VERSION=$VERSION" >> $GITHUB_ENV
-          echo "COMMIT=$COMMIT" >> $GITHUB_ENV
-          echo "DATE=$DATE" >> $GITHUB_ENV
+    - name: Show version information (Rust, cargo, GCC)
+      shell: bash
+      run: |
+        gcc --version || true
+        rustup -V
+        rustup toolchain list
+        rustup default
+        cargo -V
+        rustc -V
 
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
-          echo "date=$DATE" >> $GITHUB_OUTPUT
+    - name: Build
+      shell: bash
+      run: $BUILD_CMD build --locked --release --target=${{ matrix.job.target }}
 
-      - name: Show build info
-        run: |
-          echo "Building version: $VERSION"
-          echo "Commit: $COMMIT"
-          echo "Date: $DATE"
-          echo "Go version: $(go version)"
+    - name: Set binary name & path
+      id: bin
+      shell: bash
+      run: |
+        # Figure out suffix of binary
+        EXE_suffix=""
+        case ${{ matrix.job.target }} in
+          *-pc-windows-*) EXE_suffix=".exe" ;;
+        esac;
 
-      - name: Build musl static binary
-        run: |
-          cd backend
-          CGO_ENABLED=1 CC=gcc go build \
-            -buildvcs=false \
-            -ldflags="-linkmode external -extldflags '-static' -X main.version=$VERSION -X main.commit=$COMMIT -X main.date=$DATE" \
-            -o sqlfmt-musl-linux-amd64
+        # Setup paths
+        BIN_NAME="${{ needs.crate_metadata.outputs.name }}${EXE_suffix}"
+        BIN_PATH="target/${{ matrix.job.target }}/release/${BIN_NAME}"
 
-          echo "Binary built successfully"
-          ls -lh sqlfmt-musl-linux-amd64
-          file sqlfmt-musl-linux-amd64
+        # Let subsequent steps know where to find the binary
+        echo "BIN_PATH=${BIN_PATH}" >> $GITHUB_OUTPUT
+        echo "BIN_NAME=${BIN_NAME}" >> $GITHUB_OUTPUT
 
-      - name: Verify static linking
-        run: |
-          cd backend
-          echo "=== Checking dynamic dependencies ==="
-          ldd sqlfmt-musl-linux-amd64 || echo "Not a dynamic executable (statically linked)"
+    - name: Set testing options
+      id: test-options
+      if: ${{ matrix.job.os  == 'ubuntu-22.04' }}
+      shell: bash
+      run: |
+        # test only library unit tests and binary for arm-type targets
+        unset CARGO_TEST_OPTIONS
+        unset CARGO_TEST_OPTIONS ; case ${{ matrix.job.target }} in arm-* | aarch64-*) CARGO_TEST_OPTIONS="--bin ${{ needs.crate_metadata.outputs.name }}" ;; esac;
+        echo "CARGO_TEST_OPTIONS=${CARGO_TEST_OPTIONS}" >> $GITHUB_OUTPUT
 
-          echo "=== Binary info ==="
-          file sqlfmt-musl-linux-amd64
+    # - name: Run tests
+    #   if: ${{ matrix.job.os  == 'ubuntu-22.04' }}
+    #   shell: bash
+    #   run: $BUILD_CMD test --locked --target=${{ matrix.job.target }} ${{ steps.test-options.outputs.CARGO_TEST_OPTIONS}}
 
-      - name: Test binary
-        run: |
-          cd backend
-          chmod +x sqlfmt-musl-linux-amd64
-          ./sqlfmt-musl-linux-amd64 --version
+    - name: Create tarball
+      id: package
+      shell: bash
+      run: |
+        PKG_suffix=".tar.gz" ; case ${{ matrix.job.target }} in *-pc-windows-*) PKG_suffix=".zip" ;; esac;
+        PKG_BASENAME=${{ needs.crate_metadata.outputs.name }}-v${{ needs.crate_metadata.outputs.version }}-${{ matrix.job.target }}
+        PKG_NAME=${PKG_BASENAME}${PKG_suffix}
+        echo "PKG_NAME=${PKG_NAME}" >> $GITHUB_OUTPUT
 
-          echo "=== Testing with sample SQL ==="
-          echo "create table users (id int, name text, email text) distributed by (id);" | \
-            ./sqlfmt-musl-linux-amd64 --print-width 80
+        PKG_STAGING="${{ env.CICD_INTERMEDIATES_DIR }}/package"
+        ARCHIVE_DIR="${PKG_STAGING}/${PKG_BASENAME}/"
+        mkdir -p "${ARCHIVE_DIR}"
 
-      - name: Create release archive
-        run: |
-          mkdir -p releases-musl
-          cp backend/sqlfmt-musl-linux-amd64 releases-musl/sqlfmt
+        ls -alh "${{ steps.bin.outputs.BIN_PATH }}"
+        ls -al  "$ARCHIVE_DIR"
 
-          cd releases-musl
-          sha256sum sqlfmt > checksums.txt
-          tar -czf ../sqlfmt-musl-linux-amd64.tar.gz \
-            sqlfmt \
-            checksums.txt
-
-          echo "Archive created:"
-          ls -lh ../sqlfmt-musl-linux-amd64.tar.gz
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: sqlfmt-musl-linux-amd64
-          path: |
-            backend/sqlfmt-musl-linux-amd64
-            backend/checksums.txt
-            sqlfmt-musl-linux-amd64.tar.gz
-          retention-days: 30
-
-      - name: Check for release
-        id: is-release
-        run: |
-          unset IS_RELEASE ; if [[ $GITHUB_REF =~ ^refs/tags/v[0-9].* ]]; then IS_RELEASE='true' ; fi
-          echo "IS_RELEASE=${IS_RELEASE}" >> $GITHUB_OUTPUT
+        # Binary
+        cp "${{ steps.bin.outputs.BIN_PATH }}" "$ARCHIVE_DIR"
 
 
-      - name: Publish archives and packages
-        if: steps.is-release.outputs.IS_RELEASE
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          files: |
-            sqlfmt-musl-linux-amd64.tar.gz
-            backend/checksums.txt
+        # base compressed package
+        pushd "${PKG_STAGING}/" >/dev/null
+        case ${{ matrix.job.target }} in
+          *-pc-windows-*) 7z -y a "${PKG_NAME}" "${PKG_BASENAME}"/* | tail -2 ;;
+          *) tar czf "${PKG_NAME}" "${PKG_BASENAME}"/* ;;
+        esac;
+        popd >/dev/null
 
-      - name: Build summary
-        run: |
-          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Version**: $VERSION" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Commit**: $COMMIT" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Build Type**: musl static" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Binary Size**: $(du -h backend/sqlfmt-musl-linux-amd64 | cut -f1)" >> $GITHUB_STEP_SUMMARY
-          echo "✅ **Archive Size**: $(du -h sqlfmt-musl-linux-amd64.tar.gz | cut -f1)" >> $GITHUB_STEP_SUMMARY
+        # Let subsequent steps know where to find the compressed package
+        echo "PKG_PATH=${PKG_STAGING}/${PKG_NAME}" >> $GITHUB_OUTPUT
+
+    - name: "Artifact upload: tarball"
+      uses: actions/upload-artifact@master
+      with:
+        name: ${{ steps.package.outputs.PKG_NAME }}
+        path: ${{ steps.package.outputs.PKG_PATH }}
+
+    - name: Check for release
+      id: is-release
+      shell: bash
+      run: |
+        unset IS_RELEASE ; if [[ $GITHUB_REF =~ ^refs/tags/v[0-9].* ]]; then IS_RELEASE='true' ; fi
+        echo "IS_RELEASE=${IS_RELEASE}" >> $GITHUB_OUTPUT
+
+    - name: Publish archives and packages
+      uses: softprops/action-gh-release@v2
+      if: steps.is-release.outputs.IS_RELEASE
+      with:
+        files: |
+          ${{ steps.package.outputs.PKG_PATH }}
+        draft: true
