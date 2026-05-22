@@ -18,9 +18,9 @@ struct Args {
     #[arg(long, action = ArgAction::SetTrue)]
     tabs: bool,
 
-    /// Tab width for indentation (default: 4)
+    /// Indent width in spaces (default: 4)
     #[arg(long, value_name = "WIDTH", default_value = "4")]
-    tab_width: usize,
+    indent_width: usize,
 
     /// Keyword case mode (upper, lower, title, spongebob) (default: upper)
     #[arg(long, value_name = "MODE", default_value = "upper")]
@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = FormatterConfig {
         print_width: args.print_width,
         use_spaces: !args.tabs,
-        tab_width: args.tab_width,
+        indent_width: args.indent_width,
         case_mode,
         simplify: !args.no_simplify,
         align: args.align,

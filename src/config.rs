@@ -32,8 +32,8 @@ pub struct FormatterConfig {
     /// Use spaces for indentation instead of tabs (default: false, uses tabs)
     pub use_spaces: bool,
 
-    /// Tab width for indentation (default: 4)
-    pub tab_width: usize,
+    /// Indent width in spaces (also used as tab width in char counting)
+    pub indent_width: usize,
 
     /// Keyword case mode (default: Upper)
     pub case_mode: CaseMode,
@@ -50,7 +50,7 @@ impl Default for FormatterConfig {
         Self {
             print_width: 80,
             use_spaces: true, // 4 spaces by default
-            tab_width: 4,
+            indent_width: 4,
             case_mode: CaseMode::Upper,
             simplify: true,
             align: false,
@@ -67,7 +67,7 @@ impl FormatterConfig {
     /// Get the indentation string based on configuration
     pub fn indent_str(&self) -> String {
         if self.use_spaces {
-            " ".repeat(self.tab_width)
+            " ".repeat(self.indent_width)
         } else {
             "\t".to_string()
         }

@@ -62,7 +62,7 @@ pub fn apply_width(sql: &str, cfg: &FormatterConfig) -> String {
         }
         let has_semi = t.ends_with(';');
         let core = if has_semi { &t[..t.len() - 1] } else { t };
-        r.push_str(&fmt(core, cfg.print_width, &indent, cfg.tab_width, 0));
+        r.push_str(&fmt(core, cfg.print_width, &indent, cfg.indent_width, 0));
         if has_semi {
             r.push(';');
         }
