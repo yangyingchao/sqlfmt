@@ -35,13 +35,24 @@ jobs:
       - name: Set version
         id: version
         run: |
-          if [ -n "${{ github.event.inputs.version }}" ]; then
-            echo "VERSION=${{ github.event.inputs.version }}" >> $GITHUB_ENV
-          else
-            echo "VERSION=$(git describe --tags --always --dirty)" >> $GITHUB_ENV
+          git config --global --add safe.directory /__w/sqlfmt/sqlfmt
+          VERSION=$(git describe --tags --always --dirty)
+
+          # Fallback to commit hash if version is still empty
+          if [ -z "$VERSION" ]; then
+            VERSION=$(git rev-parse --short HEAD)
           fi
-          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_ENV
+
+          COMMIT=$(git rev-parse --short HEAD)
+          DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "COMMIT=$COMMIT" >> $GITHUB_ENV
+          echo "DATE=$DATE" >> $GITHUB_ENV
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "commit=$COMMIT" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
 
       - name: Show build info
         run: |
@@ -57,7 +68,7 @@ jobs:
             -buildvcs=false \
             -ldflags="-linkmode external -extldflags '-static' -X main.version=$VERSION -X main.commit=$COMMIT -X main.date=$DATE" \
             -o sqlfmt-musl-linux-amd64
-          
+
           echo "Binary built successfully"
           ls -lh sqlfmt-musl-linux-amd64
           file sqlfmt-musl-linux-amd64
@@ -67,7 +78,7 @@ jobs:
           cd backend
           echo "=== Checking dynamic dependencies ==="
           ldd sqlfmt-musl-linux-amd64 || echo "Not a dynamic executable (statically linked)"
-          
+
           echo "=== Binary info ==="
           file sqlfmt-musl-linux-amd64
 
@@ -76,50 +87,21 @@ jobs:
           cd backend
           chmod +x sqlfmt-musl-linux-amd64
           ./sqlfmt-musl-linux-amd64 --version
-          
+
           echo "=== Testing with sample SQL ==="
           echo "create table users (id int, name text, email text) distributed by (id);" | \
             ./sqlfmt-musl-linux-amd64 --print-width 80
 
-      - name: Generate checksums
-        run: |
-          cd backend
-          sha256sum sqlfmt-musl-linux-amd64 > checksums.txt
-          cat checksums.txt
-
       - name: Create release archive
         run: |
           mkdir -p releases-musl
-          cp backend/sqlfmt-musl-linux-amd64 releases-musl/
-          cp backend/checksums.txt releases-musl/
-          
-          cat > releases-musl/README.md << 'EOF'
-          # sqlfmt musl Static Build
-
-          This is a statically linked musl build of sqlfmt.
-
-          ## Features
-          - Zero glibc dependency
-          - Works on Alpine Linux and other musl-based systems
-          - Fully static binary
-
-          ## Usage
-          ```bash
-          chmod +x sqlfmt-musl-linux-amd64
-          ./sqlfmt-musl-linux-amd64 --help
-          ```
-
-          ## Verify
-          ```bash
-          sha256sum -c checksums.txt
-          ```
-          EOF
+          cp backend/sqlfmt-musl-linux-amd64 releases-musl/sqlfmt
 
           cd releases-musl
+          sha256sum sqlfmt > checksums.txt
           tar -czf ../sqlfmt-musl-linux-amd64.tar.gz \
-            sqlfmt-musl-linux-amd64 \
-            checksums.txt \
-            README.md
+            sqlfmt \
+            checksums.txt
 
           echo "Archive created:"
           ls -lh ../sqlfmt-musl-linux-amd64.tar.gz
@@ -159,9 +141,3 @@ jobs:
           echo "✅ **Build Type**: musl static" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Binary Size**: $(du -h backend/sqlfmt-musl-linux-amd64 | cut -f1)" >> $GITHUB_STEP_SUMMARY
           echo "✅ **Archive Size**: $(du -h sqlfmt-musl-linux-amd64.tar.gz | cut -f1)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### SHA256 Checksum" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-          cat backend/checksums.txt >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
