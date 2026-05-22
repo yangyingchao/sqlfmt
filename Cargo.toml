@@ -1,6 +1,6 @@
 [package]
 name = "sqlfmt"
-version = "0.5.4"
+version = "0.5.5"
 edition = "2021"
 authors = ["yangyingchao <yang.yingchao@qq.com>"]
 description = "SQL formatter with intelligent WITH clause compression and Greenplum dialect support"
