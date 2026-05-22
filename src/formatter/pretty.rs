@@ -159,14 +159,26 @@ fn fmt(sql: &str, margin: usize, indent: &str, tw: usize, lvl: usize) -> String 
 
 fn find_breaks(sql: &str) -> Vec<(usize, u8)> {
     let chars: Vec<char> = sql.chars().collect();
+    // Build char-index → byte-index lookup
+    let c2b: Vec<usize> = {
+        let mut v = Vec::with_capacity(chars.len() + 1);
+        let mut bp = 0;
+        for &c in &chars {
+            v.push(bp);
+            bp += c.len_utf8();
+        }
+        v.push(bp);
+        v
+    };
+    let cn = chars.len();
+
     let mut bs: Vec<(usize, u8)> = Vec::new();
     let mut i = 0;
-    let n = chars.len();
     let mut depth: i32 = 0;
     let mut ins = false;
     let mut sc = ' ';
 
-    while i < n {
+    while i < cn {
         let ch = chars[i];
         if ins {
             if ch == sc {
@@ -192,7 +204,7 @@ fn find_breaks(sql: &str) -> Vec<(usize, u8)> {
             continue;
         }
         if ch == ',' && depth == 0 {
-            bs.push((i + 1, 1));
+            bs.push((c2b[i + 1], 1));
             i += 1;
             continue;
         }
@@ -211,7 +223,7 @@ fn find_breaks(sql: &str) -> Vec<(usize, u8)> {
                 let u = w.to_uppercase();
                 if is_kw(&u) {
                     if u == "BY" {
-                        let before = &sql[..ws].trim();
+                        let before = &sql[..c2b[ws]].trim();
                         let last = before.split_whitespace().last().unwrap_or("");
                         if let Some(ul) = last.split_whitespace().last() {
                             let ul = ul.to_uppercase();
@@ -225,7 +237,7 @@ fn find_breaks(sql: &str) -> Vec<(usize, u8)> {
                             }
                         }
                     }
-                    bs.push((ws, 0));
+                    bs.push((c2b[ws], 0));
                 }
             }
         }
@@ -233,7 +245,7 @@ fn find_breaks(sql: &str) -> Vec<(usize, u8)> {
     }
 
     if depth == 0 {
-        let mut ws = n;
+        let mut ws = cn;
         while ws > 0
             && !chars[ws - 1].is_whitespace()
             && chars[ws - 1] != '('
@@ -242,11 +254,11 @@ fn find_breaks(sql: &str) -> Vec<(usize, u8)> {
         {
             ws -= 1;
         }
-        if ws < n {
-            let w: String = chars[ws..n].iter().collect();
+        if ws < cn {
+            let w: String = chars[ws..cn].iter().collect();
             let u = w.to_uppercase();
             if is_kw(&u) {
-                bs.push((ws, 0));
+                bs.push((c2b[ws], 0));
             }
         }
     }
