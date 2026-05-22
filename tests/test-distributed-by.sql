@@ -1,9 +1,9 @@
 -- ----------------------------------------------------------------------
 -- Test: setup_schema.sql
 -- ----------------------------------------------------------------------
-CREATE SCHEMA dml_over_joins;
+create schema dml_over_joins;
 
-SET search_path = dml_over_joins;
+set search_path = dml_over_joins;
 
 -- ----------------------------------------------------------------------
 -- Test: heap_motion1.sql
@@ -14,89 +14,90 @@ SET search_path = dml_over_joins;
 --      delete: using clause, subquery, initplan
 --      update: join and subsubquery
 ------------------------------------------------------------
-DROP TABLE IF EXISTS r;
+drop table if exists r;
 
-DROP TABLE IF EXISTS s;
+drop table if exists s;
 
-CREATE TABLE r (
+create table r (
     a int4,
     b int4)
-WITH (
-    APPENDONLY = true,
-    COMPRESSLEVEL = 3
+with (
+    appendonly = true,
+    compresslevel = 3
 )
-DISTRIBUTED BY (a);
+distributed by (a);
 
-CREATE TABLE s (
+create table s (
     a int4,
     b text)
-WITH (
-    APPENDONLY = true,
-    ORIENTATION = column,
-    COMPRESSTYPE = multiple,
-    COMPRESSLEVEL = 3
+with (
+    appendonly = true,
+    orientation = column,
+    compresstype = multiple,
+    compresslevel = 3
 )
-DISTRIBUTED BY (a);
+    distributed by (a)
+    partition by list(a);
 
-INSERT INTO r
-SELECT
+insert into r
+select
     generate_series(1, 10000),
     generate_series(1, 10000) * 3;
 
-INSERT INTO s
-SELECT
+insert into s
+select
     generate_series(1, 100),
     generate_series(1, 100) * 4;
 
-UPDATE
+update
     r
-SET
+set
     b = r.b + 1
-FROM
+from
     s
-WHERE
+where
     r.a = s.a;
 
-UPDATE
+update
     r
-SET
+set
     b = r.b + 1
-FROM
+from
     s
-WHERE
-    r.a IN (
-        SELECT
+where
+    r.a in (
+        select
             a
-        FROM
+        from
             s);
 
-DELETE FROM r USING s
-WHERE r.a = s.a;
+delete from r using s
+where r.a = s.a;
 
-DELETE FROM r;
+delete from r;
 
-INSERT INTO r
-SELECT
+insert into r
+select
     generate_series(1, 10000),
     generate_series(1, 10000) * 3;
 
-DELETE FROM r
-WHERE a IN (
-        SELECT
+delete from r
+where a in (
+        select
             a
-        FROM
+        from
             s);
 
-DELETE FROM r;
+delete from r;
 
-INSERT INTO r
-SELECT
+insert into r
+select
     generate_series(1, 10000),
     generate_series(1, 10000) * 3;
 
-DELETE FROM r
-WHERE a = (
-        SELECT
+delete from r
+where a = (
+        select
             max(a)
-        FROM
+        from
             s);

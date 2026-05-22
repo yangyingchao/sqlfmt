@@ -12,10 +12,11 @@ import (
 )
 
 var (
-	ignoreComments       = regexp.MustCompile(`^--.*\s*`)
-	distributedByPattern = regexp.MustCompile(`(?i)\s+distributed\s+by\s*\([^)]*\)`)
-	withClausePattern    = regexp.MustCompile(`(?i)\s+with\s*\([^)]*\)`)
-	textTypePattern      = regexp.MustCompile(`(?i)\bTEXT\b`)
+	ignoreComments        = regexp.MustCompile(`^--.*\s*`)
+	distributedByPattern  = regexp.MustCompile(`(?i)\s+distributed\s+by\s*\([^)]*\)`)
+	partitionByPattern    = regexp.MustCompile(`(?i)\s+partition\s+by\s+\w+\s*\([^)]*\)`)
+	withClausePattern     = regexp.MustCompile(`(?i)\s+with\s*\([^)]*\)`)
+	textTypePattern       = regexp.MustCompile(`(?i)\bTEXT\b`)
 )
 
 // stripTextType records positions of TEXT types before parsing
@@ -105,10 +106,19 @@ func extractAndStripClauses(sql string, allClauses []map[string][]string) (strin
 			distClause = strings.TrimSpace(distMatches[0])
 		}
 
+		// Extract PARTITION BY clause
+		partitionMatches := partitionByPattern.FindAllString(match, -1)
+		partitionClause := ""
+		if len(partitionMatches) > 0 {
+			// Trim leading/trailing whitespace from the extracted clause
+			partitionClause = strings.TrimSpace(partitionMatches[0])
+		}
+
 		clauses := map[string][]string{
 			"WITH":              {withClauseCompressed},
 			"WITH_ORIGINAL":     {withClauseOriginal},
 			"DISTRIBUTED":       {distClause},
+			"PARTITION":         {partitionClause},
 		}
 		allClauses = append(allClauses, clauses)
 	}
@@ -116,6 +126,7 @@ func extractAndStripClauses(sql string, allClauses []map[string][]string) (strin
 	// Remove all clauses from SQL
 	result = withClausePattern.ReplaceAllString(result, "")
 	result = distributedByPattern.ReplaceAllString(result, "")
+	result = partitionByPattern.ReplaceAllString(result, "")
 
 	return result, allClauses
 }
@@ -136,6 +147,46 @@ func mergeLineIfFits(prevLine, currentLine string, lineWidth int) string {
 	}
 	// Doesn't fit, return as is
 	return prevLine + currentLine
+}
+
+// normalizeDistributedByKeyword converts "distributed by" to uppercase "DISTRIBUTED BY"
+func normalizeDistributedByKeyword(clause string) string {
+	// Match "distributed by" case-insensitively and replace with uppercase
+	pattern := regexp.MustCompile(`(?i)(distributed)\s+(by)`)
+	return pattern.ReplaceAllString(clause, "DISTRIBUTED BY")
+}
+
+// normalizePartitionByKeyword converts "partition by" to uppercase "PARTITION BY"
+func normalizePartitionByKeyword(clause string) string {
+	// Match "partition by" case-insensitively and replace with uppercase
+	pattern := regexp.MustCompile(`(?i)(partition)\s+(by)`)
+	return pattern.ReplaceAllString(clause, "PARTITION BY")
+}
+
+// normalizeWithClause converts "with" to uppercase "WITH" and parameter names to uppercase in the clause
+func normalizeWithClause(clause string) string {
+	// Match "with" at the beginning case-insensitively and replace with uppercase
+	pattern := regexp.MustCompile(`(?i)^\s*with`)
+	result := pattern.ReplaceAllStringFunc(clause, func(match string) string {
+		// Replace 'with' with 'WITH' but preserve leading whitespace
+		leadingSpace := regexp.MustCompile(`^\s*`).FindString(match)
+		return leadingSpace + "WITH"
+	})
+	
+	// Also convert parameter names inside the WITH clause to uppercase
+	// Match word characters followed by '=' and convert the word to uppercase
+	paramPattern := regexp.MustCompile(`\b([a-zA-Z_]\w*)\s*=`)
+	result = paramPattern.ReplaceAllStringFunc(result, func(match string) string {
+		// Extract just the parameter name (before the '=')
+		paramMatch := regexp.MustCompile(`([a-zA-Z_]\w*)\s*=`).FindStringSubmatch(match)
+		if len(paramMatch) > 1 {
+			// Convert parameter name to uppercase
+			return strings.ToUpper(paramMatch[1]) + " ="
+		}
+		return match
+	})
+	
+	return result
 }
 
 // restoreAllSpecialClauses restores both WITH and DISTRIBUTED BY clauses
@@ -184,15 +235,26 @@ func restoreAllSpecialClauses(formatted string, allClauses []map[string][]string
 			withClause = withClauseOriginal
 		}
 
+		// Get PARTITION BY clause
+		partitionClause := ""
+		if len(clauses["PARTITION"]) > 0 && clauses["PARTITION"][0] != "" {
+			partitionClause = clauses["PARTITION"][0]
+		}
+
 		// Add WITH clause to statement
 		if withClause != "" {
-			// Always add newline before WITH, trim leading whitespace
-			statement += "\n" + strings.TrimLeft(withClause, " \t")
+			// Always add newline before WITH, trim leading whitespace, and normalize keywords
+			statement += "\n" + normalizeWithClause(strings.TrimLeft(withClause, " \t"))
 		}
 
 		// Add DISTRIBUTED BY clause on a new line
 		if distClause != "" {
-			statement += "\n" + distClause
+			statement += "\n" + normalizeDistributedByKeyword(distClause)
+		}
+
+		// Add PARTITION BY clause on a new line
+		if partitionClause != "" {
+			statement += "\n" + normalizePartitionByKeyword(partitionClause)
 		}
 
 		statement += ";"

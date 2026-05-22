@@ -29,7 +29,8 @@ WITH (
     COMPRESSTYPE = multiple,
     COMPRESSLEVEL = 3
 )
-DISTRIBUTED BY (a);
+DISTRIBUTED BY (a)
+PARTITION BY list(a);
 
 INSERT INTO r SELECT generate_series(1, 10000), generate_series(1, 10000) * 3;
 
