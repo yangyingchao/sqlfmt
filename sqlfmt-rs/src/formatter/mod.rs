@@ -3,7 +3,7 @@ mod special_clauses;
 mod text_type;
 mod keywords;
 mod splitter;
-mod comments;
+mod pretty;
 
 pub use splitter::split_statements;
 
@@ -53,11 +53,15 @@ pub fn format_sql(cfg: &FormatterConfig, statements: &[String]) -> Result<String
             // 6. Restore special clauses
             let formatted = special_clauses::restore_all_clauses(&formatted, &clauses, cfg.print_width);
             
-            // 7. Apply keyword normalization
-            let mut formatted = keywords::normalize_keywords(&formatted, cfg.case_mode);
+            // 7. Apply keyword normalization (before width formatting)
+            let formatted = keywords::normalize_keywords(&formatted, cfg.case_mode);
             
-            // 8. Add semicolon if missing
-            if !formatted.trim().ends_with(';') {
+            // 8. Apply width-aware formatting
+            let formatted = pretty::apply_width(&formatted, cfg);
+            
+            // 9. Add semicolon if missing (always on same line)
+            let mut formatted = formatted.trim().to_string();
+            if !formatted.ends_with(';') {
                 formatted.push(';');
             }
             
