@@ -46,16 +46,25 @@ pub fn split_statements(sql: &str) -> Vec<String> {
 
         current.push_str(line);
 
-        // Check if statement ends with semicolon
-        if trimmed.ends_with(';') {
-            let stmt = current.trim_end().to_string();
-            if !stmt.is_empty() {
-                statements.push(stmt);
+        // Handle all semicolons on this line (support multiple statements per line)
+        loop {
+            match current.find(';') {
+                Some(semi_pos) => {
+                    let split_point = semi_pos + 1;
+                    let stmt = current[..split_point].trim_end().to_string();
+                    if !stmt.is_empty() {
+                        statements.push(stmt);
+                    }
+                    current_comments.clear();
+                    current = current[split_point..].to_string();
+                }
+                None => {
+                    if !current.trim().is_empty() {
+                        current.push('\n');
+                    }
+                    break;
+                }
             }
-            current.clear();
-            current_comments.clear();
-        } else {
-            current.push('\n');
         }
     }
 

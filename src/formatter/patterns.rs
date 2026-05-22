@@ -4,15 +4,15 @@ use regex::Regex;
 lazy_static! {
     /// Pattern to match DISTRIBUTED BY clause
     pub static ref DISTRIBUTED_BY: Regex =
-        Regex::new(r"(?i)\s+distributed\s+by\s*\([^)]*\)").unwrap();
+        Regex::new(r"(?i)(?:^|\s+)distributed\s+by\s*\([^)]*\)").unwrap();
 
     /// Pattern to match PARTITION BY clause
     pub static ref PARTITION_BY: Regex =
-        Regex::new(r"(?i)\s+partition\s+by\s+\w+\s*\([^)]*\)").unwrap();
+        Regex::new(r"(?i)(?:^|\s+)partition\s+by\s+\w+\s*\([^)]*\)").unwrap();
 
     /// Pattern to match WITH clause
     pub static ref WITH_CLAUSE: Regex =
-        Regex::new(r"(?i)\s+with\s*\([^)]*\)").unwrap();
+        Regex::new(r"(?i)(?:^|\s+)with\s*\([^)]*\)").unwrap();
 
     /// Pattern to match TEXT type
     pub static ref TEXT_TYPE: Regex =

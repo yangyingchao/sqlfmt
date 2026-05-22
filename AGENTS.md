@@ -31,9 +31,12 @@ cargo build --release
 sqlfmt --stmt "SELECT 1" --stmt "SELECT 2"    # inline stmts (joined by newline)
 ```
 
-## Verification (no Rust test suite)
+## Verification
+
+Rust unit tests (`cargo test`) plus idempotency check:
 
 ```bash
+cargo test
 cargo build --release
 diff tests/test-distributed-by.expected <(./target/release/sqlfmt tests/test-distributed-by.sql)
 # also check idempotency:
@@ -60,6 +63,7 @@ CI also runs `cargo fmt --check` and cross-compiles for linux-musl.
 ## Conventions
 
 - **Do NOT auto-commit** — wait for explicit user request
+- **Before committing**, ensure `cargo test` passes with no failures.
 - `VERSION` auto-syncs from `Cargo.toml` via `env!("CARGO_PKG_VERSION")`
 - If you edit rust source files, makes sure to run `cargo fmt` after your edit.
 - Ensure `cargo fmt -- --check` does not report warnings or errors.
