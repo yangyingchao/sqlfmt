@@ -49,7 +49,7 @@ impl Default for FormatterConfig {
     fn default() -> Self {
         Self {
             print_width: 80,
-            use_spaces: false,
+            use_spaces: true, // 4 spaces by default
             tab_width: 4,
             case_mode: CaseMode::Upper,
             simplify: true,

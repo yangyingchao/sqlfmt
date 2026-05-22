@@ -14,9 +14,9 @@ struct Args {
     #[arg(long, value_name = "WIDTH", default_value = "80")]
     print_width: usize,
 
-    /// Use spaces for indentation instead of tabs
+    /// Use tabs for indentation (default: 4 spaces)
     #[arg(long, action = ArgAction::SetTrue)]
-    use_spaces: bool,
+    tabs: bool,
 
     /// Tab width for indentation (default: 4)
     #[arg(long, value_name = "WIDTH", default_value = "4")]
@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Create formatter config
     let config = FormatterConfig {
         print_width: args.print_width,
-        use_spaces: args.use_spaces,
+        use_spaces: !args.tabs,
         tab_width: args.tab_width,
         case_mode,
         simplify: !args.no_simplify,
