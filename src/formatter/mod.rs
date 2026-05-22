@@ -121,17 +121,4 @@ fn extract_leading_comments(stmt: &str) -> (String, String) {
     (sql.trim_end().to_string(), comments.trim_end().to_string())
 }
 
-/// Format JSON (pass-through for now, will implement if needed)
-pub fn format_json(json_str: &str) -> Result<String> {
-    // Try to parse and pretty-print JSON
-    match serde_json::from_str::<serde_json::Value>(json_str) {
-        Ok(value) => {
-            let formatted = serde_json::to_string_pretty(&value)?;
-            Ok(formatted)
-        }
-        Err(e) => Err(crate::errors::SqlFmtError::Other(format!(
-            "Invalid JSON: {}",
-            e
-        ))),
-    }
-}
+

@@ -1,6 +1,6 @@
 use clap::{ArgAction, Parser};
 use sqlfmt::config::CaseMode;
-use sqlfmt::{format_json, format_sql, FormatterConfig, VERSION};
+use sqlfmt::{format_sql, FormatterConfig, VERSION};
 use std::fs;
 use std::io::{self, Read};
 use std::path::PathBuf;
@@ -33,10 +33,6 @@ struct Args {
     /// Align keywords
     #[arg(long, action = ArgAction::SetTrue)]
     align: bool,
-
-    /// Format as JSON
-    #[arg(long, action = ArgAction::SetTrue)]
-    json: bool,
 
     /// SQL statements to format (if not provided, reads from file or stdin)
     #[arg(long, value_name = "SQL")]
@@ -97,15 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
-    // Format SQL or JSON
-    let result = if args.json {
-        match format_json(&input) {
-            Ok(formatted) => formatted,
-            Err(_) => format_sql(&config, &[input])?,
-        }
-    } else {
-        format_sql(&config, &[input])?
-    };
+    let result = format_sql(&config, &[input])?;
 
     if args.inplace {
         if let Some(path) = &args.file {

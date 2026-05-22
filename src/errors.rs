@@ -41,11 +41,5 @@ impl From<sqlparser::parser::ParserError> for SqlFmtError {
     }
 }
 
-impl From<serde_json::Error> for SqlFmtError {
-    fn from(err: serde_json::Error) -> Self {
-        SqlFmtError::Other(err.to_string())
-    }
-}
-
 /// Result type for sqlformat operations
 pub type Result<T> = std::result::Result<T, SqlFmtError>;
