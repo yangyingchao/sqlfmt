@@ -1,6 +1,14 @@
 use std::path::Path;
 use std::process::Command;
 
+fn decode_stdout(bytes: &[u8]) -> String {
+    if let Ok(s) = std::str::from_utf8(bytes) {
+        return s.to_owned();
+    }
+    let (decoded, _, _) = encoding_rs::GB18030.decode(bytes);
+    decoded.into_owned()
+}
+
 #[test]
 fn regression_test_against_binary() {
     let binary = env!("CARGO_BIN_EXE_sqlfmt");
@@ -14,6 +22,7 @@ fn regression_test_against_binary() {
         if path.extension().map_or(false, |ext| ext == "sql") {
             tested = true;
             let out_path = path.with_extension("out");
+            println!("checking {}", path.file_name().unwrap().to_string_lossy());
 
             let output = Command::new(&binary)
                 .arg(&path)
@@ -27,10 +36,10 @@ fn regression_test_against_binary() {
                 String::from_utf8_lossy(&output.stderr),
             );
 
-            let formatted = String::from_utf8(output.stdout)
-                .unwrap_or_else(|e| panic!("Output is not valid UTF-8: {}", e));
-            let expected = std::fs::read_to_string(&out_path)
+            let formatted = decode_stdout(&output.stdout);
+            let expected_bytes = std::fs::read(&out_path)
                 .unwrap_or_else(|e| panic!("Failed to read expected output {:?}: {}", out_path, e));
+            let expected = decode_stdout(&expected_bytes);
 
             assert_eq!(
                 formatted,

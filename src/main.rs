@@ -1,8 +1,14 @@
 use clap::{ArgAction, Parser};
 use sqlfmt::{format_sql, FormatterConfig, VERSION};
 use std::fs;
-use std::io::{self, Read};
-use std::path::PathBuf;
+use std::io::{self, Read, Write};
+use std::path::{Path, PathBuf};
+
+#[derive(Debug, Clone, Copy)]
+enum InputEncoding {
+    Utf8,
+    Gb18030,
+}
 
 #[derive(Parser, Debug)]
 #[command(name = "sqlfmt")]
@@ -34,6 +40,32 @@ struct Args {
     inplace: bool,
 }
 
+/// Read SQL file, detect encoding, return decoded text + detected encoding.
+fn read_sql_file(path: &Path) -> io::Result<(String, InputEncoding)> {
+    let bytes = fs::read(path)?;
+    if let Ok(s) = std::str::from_utf8(&bytes) {
+        return Ok((s.to_owned(), InputEncoding::Utf8));
+    }
+    let (decoded, _, had_errors) = encoding_rs::GB18030.decode(&bytes);
+    if had_errors {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("{}: not valid UTF-8 or GB18030", path.display()),
+        ));
+    }
+    Ok((decoded.into_owned(), InputEncoding::Gb18030))
+}
+
+fn encode_output(text: &str, encoding: InputEncoding) -> Vec<u8> {
+    match encoding {
+        InputEncoding::Utf8 => text.as_bytes().to_vec(),
+        InputEncoding::Gb18030 => {
+            let (encoded, _, _) = encoding_rs::GB18030.encode(text);
+            encoded.into_owned()
+        }
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
@@ -44,17 +76,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         indent_width: args.indent_width,
     };
 
-    // Get input SQL
-    let input = if !args.stmt.is_empty() {
-        args.stmt.join("\n")
+    // Get input SQL and detect encoding
+    let (input, encoding) = if !args.stmt.is_empty() {
+        (args.stmt.join("\n"), InputEncoding::Utf8)
     } else {
         match &args.file {
-            Some(path) if path.as_os_str() != "-" => fs::read_to_string(path)?,
+            Some(path) if path.as_os_str() != "-" => read_sql_file(path)?,
             _ => {
-                // Read from stdin
                 let mut input = String::new();
                 io::stdin().read_to_string(&mut input)?;
-                input
+                (input, InputEncoding::Utf8)
             }
         }
     };
@@ -64,11 +95,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let result = format_sql(&config, &[input])?;
+    let encoded = encode_output(&result, encoding);
 
     if args.inplace {
         if let Some(path) = &args.file {
             if path.as_os_str() != "-" {
-                fs::write(path, &result)?;
+                fs::write(path, &encoded)?;
                 return Ok(());
             }
         }
@@ -76,6 +108,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    print!("{}", result);
+    io::stdout().write_all(&encoded)?;
     Ok(())
 }

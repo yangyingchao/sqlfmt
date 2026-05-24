@@ -1,0 +1,15 @@
+-- -*- coding: gb18030 -*-
+-- 查询用户订单
+-- 关联用户表和订单表
+SELECT
+    u.name,
+    o.order_id,
+    o.total
+FROM
+    users u
+JOIN
+    orders o ON u.id = o.user_id
+WHERE
+    o.status = 'ACTIVE'
+ORDER
+    BY o.created_at DESC;
