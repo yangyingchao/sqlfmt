@@ -14,10 +14,6 @@ lazy_static! {
     pub static ref WITH_CLAUSE: Regex =
         Regex::new(r"(?i)(?:^|\s+)with\s*\([^)]*\)").unwrap();
 
-    /// Pattern to match TEXT type
-    pub static ref TEXT_TYPE: Regex =
-        Regex::new(r"(?i)\bTEXT\b").unwrap();
-
     /// Pattern to match CREATE TABLE statements
     pub static ref CREATE_TABLE: Regex =
         Regex::new(r"(?i)CREATE\s+TABLE\s+[^;]+?;").unwrap();
@@ -43,11 +39,5 @@ mod tests {
     fn test_with_clause_pattern() {
         let sql = "WITH (key = value)";
         assert!(WITH_CLAUSE.is_match(sql));
-    }
-
-    #[test]
-    fn test_text_type_pattern() {
-        let sql = "col TEXT";
-        assert!(TEXT_TYPE.is_match(sql));
     }
 }

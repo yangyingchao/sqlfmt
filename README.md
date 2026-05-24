@@ -43,45 +43,39 @@ sqlfmt --print-width 100 --indent-width 2 input.sql
 # Use tabs instead of spaces
 sqlfmt --tabs input.sql
 
-# Keyword case mode
-sqlfmt --casemode lower input.sql
-
 # Format inline statements
 sqlfmt --stmt "SELECT * FROM t WHERE id = 1"
 ```
 
 ### Options
 
-| Flag              | Default      | Description                                          |
-|-------------------|--------------|------------------------------------------------------|
-| `--print-width`   | `80`         | Maximum line width                                   |
-| `--tabs`          | off (spaces) | Use tabs for indentation                             |
-| `--indent-width`  | `4`          | Spaces per indent level                              |
-| `--casemode`      | `upper`      | Keyword case: `upper`, `lower`, `title`, `spongebob` |
-| `--no-simplify`   | off          | Disable query simplification                         |
-| `--align`         | off          | Align keywords (experimental)                        |
-| `--stmt`          | —            | Inline SQL statement(s) to format                    |
-| `-i`, `--inplace` | off          | Edit file in-place                                   |
-| `-h`, `--help`    | —            | Print help                                           |
-| `-V`, `--version` | —            | Print version                                        |
+| Flag              | Default      | Description                       |
+|-------------------|--------------|-----------------------------------|
+| `--print-width`   | `80`         | Maximum line width                |
+| `--tabs`          | off (spaces) | Use tabs for indentation          |
+| `--indent-width`  | `4`          | Spaces per indent level           |
+| `--stmt`          | —            | Inline SQL statement(s) to format |
+| `-i`, `--inplace` | off          | Edit file in-place                |
+| `-h`, `--help`    | —            | Print help                        |
+| `-V`, `--version` | —            | Print version                     |
 
 ## Changes from the Go version
 
 This is a Rust reimplementation of the original Go sqlfmt. Key differences:
 
-| Aspect            | Go (original)                   | Rust (current)                           |
-|-------------------|---------------------------------|------------------------------------------|
-| Parser            | CockroachDB parser              | sqlparser-rs 0.62                        |
-| Width algorithm   | AST-level Wadler pretty printer | Text-level keyword/comma break detection |
-| Indent default    | Tabs                            | 4 spaces                                 |
-| Tab flag          | `--use-spaces`                  | `--tabs` (inverted)                      |
-| Indent width flag | `--tab-width`                   | `--indent-width`                         |
-| File arg          | stdin only                      | Supports file path + `-i`/`--inplace`    |
-| JSON formatting   | Supported                       | Removed                                  |
-| HTTP server       | Supported                       | Removed                                  |
-| WASM build        | Supported                       | Removed                                  |
-| UTF-8 in SQL      | Supported                       | Supported (fixed char/byte index)        |
-| Version sync      | ldflags at build                | `env!("CARGO_PKG_VERSION")`              |
+| Aspect               | Go (original)              | Rust (current)                           |
+|----------------------|----------------------------|------------------------------------------|
+| Parser               | CockroachDB parser         | sqlparser-rs 0.62                        |
+| Width algorithm      | AST-level Wadler printer   | Text-level keyword/comma break detection |
+| Indent default       | Tabs                       | 4 spaces                                 |
+| Tab flag             | `--use-spaces`             | `--tabs` (inverted)                      |
+| Indent width flag    | `--tab-width`              | `--indent-width`                         |
+| File arg             | stdin only                 | Supports file path + `-i`/`--inplace`    |
+| JSON formatting      | Supported                  | Removed                                  |
+| HTTP server          | Supported                  | Removed                                  |
+| WASM build           | Supported                  | Removed                                  |
+| UTF-8 in SQL         | Supported                  | Supported (fixed char/byte index)        |
+| Version sync         | ldflags at build           | `env!("CARGO_PKG_VERSION")`              |
 
 ### Width-aware formatting
 

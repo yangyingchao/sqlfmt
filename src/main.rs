@@ -1,5 +1,4 @@
 use clap::{ArgAction, Parser};
-use sqlfmt::config::CaseMode;
 use sqlfmt::{format_sql, FormatterConfig, VERSION};
 use std::fs;
 use std::io::{self, Read};
@@ -22,18 +21,6 @@ struct Args {
     #[arg(long, value_name = "WIDTH", default_value = "4")]
     indent_width: usize,
 
-    /// Keyword case mode (upper, lower, title, spongebob) (default: upper)
-    #[arg(long, value_name = "MODE", default_value = "upper")]
-    casemode: String,
-
-    /// Do not simplify query structure
-    #[arg(long, action = ArgAction::SetTrue)]
-    no_simplify: bool,
-
-    /// Align keywords
-    #[arg(long, action = ArgAction::SetTrue)]
-    align: bool,
-
     /// SQL statements to format (if not provided, reads from file or stdin)
     #[arg(long, value_name = "SQL")]
     stmt: Vec<String>,
@@ -50,26 +37,11 @@ struct Args {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
 
-    // Parse case mode
-    let case_mode = match CaseMode::from_str(&args.casemode) {
-        Some(mode) => mode,
-        None => {
-            eprintln!(
-                "Invalid case mode: {}. Use: upper, lower, title, spongebob",
-                args.casemode
-            );
-            std::process::exit(1);
-        }
-    };
-
     // Create formatter config
     let config = FormatterConfig {
         print_width: args.print_width,
         use_spaces: !args.tabs,
         indent_width: args.indent_width,
-        case_mode,
-        simplify: !args.no_simplify,
-        align: args.align,
     };
 
     // Get input SQL

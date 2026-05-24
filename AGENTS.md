@@ -9,15 +9,15 @@ Width-aware layout via **text-level** keyword/comma break detection (not AST-lev
 
 ## Entrypoints & structure
 
-| Path | Role |
-|---|---|
-| `src/main.rs` | CLI binary (clap) |
-| `src/lib.rs` | Library root, re-exports `format_sql`, `FormatterConfig` |
-| `src/formatter/mod.rs` | Core pipeline orchestrator (7 steps) |
-| `src/formatter/pretty.rs` | Width-aware layout engine |
-| `src/formatter/special_clauses.rs` | WITH / DISTRIBUTED BY / PARTITION BY extraction & restoration |
-| `tests/` | SQL fixtures + `.expected` for comparison (no Rust unit tests) |
-| `.github/workflows/release.yml` | CI: `cargo fmt --check`, cross-compile + draft release on tag |
+| Path                            | Role                                                                 |
+|---------------------------------|----------------------------------------------------------------------|
+| `src/main.rs`                   | CLI binary (clap)                                                    |
+| `src/lib.rs`                    | Library root, re-exports `format_sql`, `FormatterConfig`             |
+| `src/formatter/mod.rs`          | Core pipeline orchestrator (8 steps)                                 |
+| `src/formatter/pretty.rs`       | Width-aware layout engine                                            |
+| `src/formatter/special_clauses.rs` | WITH / DISTRIBUTED BY / PARTITION BY extraction & restoration      |
+| `tests/`                        | SQL fixtures + `.out` for comparison, plus `regression_test.rs`      |
+| `.github/workflows/release.yml` | CI: `cargo fmt --check`, cross-compile + draft release on tag       |
 
 ## Build & run
 
@@ -27,7 +27,6 @@ cargo build --release
 ./target/release/sqlfmt -i input.sql           # in-place edit
 ./target/release/sqlfmt < input.sql            # stdin → stdout
 ./target/release/sqlfmt --tabs                 # use tabs (default: 4 spaces)
-./target/release/sqlfmt --casemode lower       # keyword case
 sqlfmt --stmt "SELECT 1" --stmt "SELECT 2"    # inline stmts (joined by newline)
 ```
 
@@ -38,10 +37,9 @@ Rust unit tests (`cargo test`) plus idempotency check:
 ```bash
 cargo test
 cargo build --release
-diff tests/test-distributed-by.expected <(./target/release/sqlfmt tests/test-distributed-by.sql)
-# also check idempotency:
+# idempotency check (format twice, output should be identical):
 ./target/release/sqlfmt tests/test-distributed-by.sql | ./target/release/sqlfmt | \
-  diff tests/test-distributed-by.expected -
+  diff tests/test-distributed-by.out -
 ```
 
 CI also runs `cargo fmt --check` and cross-compiles for linux-musl.
@@ -67,4 +65,5 @@ CI also runs `cargo fmt --check` and cross-compiles for linux-musl.
 - `VERSION` auto-syncs from `Cargo.toml` via `env!("CARGO_PKG_VERSION")`
 - If you edit rust source files, makes sure to run `cargo fmt` after your edit.
 - Ensure `cargo fmt -- --check` does not report warnings or errors.
-- Formatting pipeline order: split → extract comments → TEXT tracking → extract special clauses → parse → restore TEXT → restore clauses → keyword normalization → width formatting
+- Formatting pipeline order: split → extract comments → extract special clauses → parse → restore clauses → keyword normalization (uppercase only, Greenplum-specific) → width formatting → semicolon → leading comments
+- Uses `PostgreSqlDialect` (not `GenericDialect`) — TEXT type preserved natively, no TEXT/STRING swap needed
